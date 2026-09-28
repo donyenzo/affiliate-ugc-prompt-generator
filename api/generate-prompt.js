@@ -1,14 +1,14 @@
 // api/generate-prompt.js
-// Vercel Serverless Function — proxy aman ke Anthropic API.
+// Vercel Serverless Function — proxy aman ke OpenRouter API.
 //
 // KENAPA FILE INI PERLU ADA:
-// Browser TIDAK BISA memanggil https://api.anthropic.com langsung (CORS block + butuh API key
+// Browser TIDAK BISA memanggil API AI langsung (CORS block + butuh API key
 // yang tidak boleh ditaruh di kode frontend). File ini jalan di server Vercel, menyimpan API key
 // dengan aman lewat Environment Variable, lalu meneruskan (proxy) request dari frontend ke Anthropic.
 //
 // SETUP WAJIB DI VERCEL:
 // 1. Buka project di Vercel Dashboard → Settings → Environment Variables
-// 2. Tambah variable: ANTHROPIC_API_KEY = sk-ant-xxxxxxxx (API key asli dari console.anthropic.com)
+// 2. Tambah variable: OPENROUTER_API_KEY = sk-or-v1-xxxx (key dari openrouter.ai/keys)
 // 3. Redeploy project setelah menambah env var (env var baru tidak otomatis ke-apply ke deployment lama)
 
 // ── Rate limiting sederhana (in-memory, per cold-start instance) ──────────────────────────
@@ -69,9 +69,9 @@ export default async function handler(req, res) {
   }
 
   // ── Validasi API key server tersedia ──────────────────────────────────
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    console.error("ANTHROPIC_API_KEY belum di-set di Environment Variables Vercel.");
+    console.error("OPENROUTER_API_KEY belum di-set di Environment Variables Vercel.");
     return res.status(500).json({
       error: { message: "Server belum dikonfigurasi (API key hilang). Hubungi admin." },
     });
@@ -91,27 +91,29 @@ export default async function handler(req, res) {
     return res.status(413).json({ error: { message: "Ukuran gambar terlalu besar." } });
   }
 
-  // ── Panggil Anthropic API dengan timeout ──────────────────────────────
+  // ── Panggil OpenRouter API dengan timeout ──────────────────────────────
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+    // OpenRouter = API kompatibel OpenAI (endpoint chat/completions), bukan format Anthropic.
+    const model = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-5";
+    const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${apiKey}`,
+        "X-Title": "Affiliate UGC Prompt Generator",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model,
         max_tokens: 8000,
-        system,
         messages: [
+          { role: "system", content: system },
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: imgB64 } },
+              { type: "image_url", image_url: { url: `data:${mediaType || "image/jpeg"};base64,${imgB64}` } },
               { type: "text", text: "Analyze this product and generate the three prompts." },
             ],
           },
@@ -122,14 +124,24 @@ export default async function handler(req, res) {
 
     clearTimeout(timeoutId);
 
-    const data = await upstream.json();
+    const raw = await upstream.json();
 
-    if (!upstream.ok) {
-      // Teruskan pesan error asli dari Anthropic (tanpa expose API key tentunya)
-      return res.status(upstream.status).json({
-        error: { message: data?.error?.message || `Anthropic API error (HTTP ${upstream.status})` },
+    if (!upstream.ok || raw?.error) {
+      return res.status(upstream.ok ? 502 : upstream.status).json({
+        error: { message: raw?.error?.message || `OpenRouter error (HTTP ${upstream.status})` },
       });
     }
+
+    // Ubah format OpenRouter -> format yang dibaca frontend ({ content: [{type:"text", text}] })
+    const choice = raw?.choices?.[0];
+    const text = choice?.message?.content;
+    if (typeof text !== "string" || !text) {
+      return res.status(502).json({ error: { message: "AI mengembalikan respons kosong. Coba lagi." } });
+    }
+    const data = {
+      content: [{ type: "text", text }],
+      stop_reason: choice.finish_reason === "length" ? "max_tokens" : "end_turn",
+    };
 
     return res.status(200).json(data);
   } catch (err) {
