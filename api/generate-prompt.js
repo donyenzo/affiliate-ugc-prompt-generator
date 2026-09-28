@@ -97,7 +97,9 @@ export default async function handler(req, res) {
 
   try {
     // OpenRouter = API kompatibel OpenAI (endpoint chat/completions), bukan format Anthropic.
-    const model = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-5";
+    const model = process.env.OPENROUTER_MODEL || "google/gemma-4-26b-a4b-it:free";
+    // Turunkan lewat env var kalau OpenRouter menolak karena kredit/limit token.
+    const maxTokens = parseInt(process.env.OPENROUTER_MAX_TOKENS, 10) || 6000;
     const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -107,7 +109,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 8000,
+        max_tokens: maxTokens,
         messages: [
           { role: "system", content: system },
           {
