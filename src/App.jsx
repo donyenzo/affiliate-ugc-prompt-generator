@@ -65,20 +65,15 @@ const TONES = [
   { id: "educational", label: "Educational & Informative", style: `slightly shaky close-up shots, natural daylight, clear product detail, neutral tones, held in one hand while filming, ${SMARTPHONE_BASE}` },
 ];
 
-// Fashion niches skip "Content Type" (their scene structure is fixed), so the two flows
-// have the same length but diverge in meaning at index 2/3 — see STEP_LABELS_FASHION/NONFASHION below.
 const STEP_LABELS_FASHION    = ["Photo", "Niche", "Category", "Platform", "AI Tool", "Tone", "Product", "Confirm"];
 const STEP_LABELS_NONFASHION = ["Photo", "Niche", "Platform", "Content",  "AI Tool", "Tone", "Product", "Confirm"];
 
-// Some platform ratios ("1:1/4:5" for Feed, "Adaptive" for Multi-platform) are not
-// valid --ar values for Midjourney/Kling/etc. This resolves a safe numeric ratio
-// to embed in generator commands, while the human-readable label is kept separately.
-const STATIC_PLATFORM_IDS = ["feed"]; // platforms that are photo/carousel, not video
+const STATIC_PLATFORM_IDS = ["feed"];
 
 function safeArRatio(ratio) {
   if (!ratio) return "9:16";
-  if (ratio === "Adaptive") return "9:16"; // sensible default for multi-platform
-  if (ratio.includes("/")) return ratio.split("/")[0].trim(); // "1:1/4:5" -> "1:1"
+  if (ratio === "Adaptive") return "9:16";
+  if (ratio.includes("/")) return ratio.split("/")[0].trim();
   return ratio;
 }
 
@@ -103,7 +98,7 @@ function buildStaticPrompt({ niche, fashionSub, platform, contentType, aiGen, to
   const NEG_SHORT = `no speech, no talking, no open mouth, no lip movement, no text overlay, no studio lighting, no tripod, no stabilizer, no gimbal, no watermark`;
 
   const isKling  = aiGen === "kling";
-  const isStatic = STATIC_PLATFORM_IDS.includes(platform); // e.g. Instagram Feed = static photo/carousel, not video
+  const isStatic = STATIC_PLATFORM_IDS.includes(platform);
 
   const makeImageSlide = (num, label, prompt) => (
 `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -386,7 +381,7 @@ async function buildAIPrompt({ imgB64, niche, fashionSub, platform, contentType,
   const contentObj  = CONTENT_TYPES.find(c => c.id === contentType);
 
   const isKlingAI  = aiObj?.id === "kling";
-  const isStaticAI = STATIC_PLATFORM_IDS.includes(platform); 
+  const isStaticAI = STATIC_PLATFORM_IDS.includes(platform);
 
   const klingIntroFormat = isKlingAI
     ? "🎬 KLING PROMPT — Shot A:\n[max 40 words — product reveal action, handheld, natural light, UGC keywords]\n\n🎬 KLING PROMPT — Shot B:\n[max 40 words — close-up or hold, autofocus lock, warm light, smartphone POV]\n\n❌ NEGATIVE: no speech, no open mouth, no lip movement, no text, no studio light, no tripod, no gimbal"
@@ -475,7 +470,7 @@ Rules for the 5 slides:
 - SLIDE 2 — PRODUCT DETAIL: macro/close-up of texture or key feature
 - SLIDE 3 — IN USE / CONTEXT: product shown in a real everyday setting
 - SLIDE 4 — BENEFIT / RESULT: visual proof of the key benefit "${productBenefit || "from image"}"
-- SLIDE 5 �� CTA: clean shot with negative space for a "link in bio" text overlay
+- SLIDE 5 — CTA: clean shot with negative space for a "link in bio" text overlay
 ${fashionSubRules}
 - NO video language: no timestamps, no "camera pans", no "handheld shake" — these are static photos
 - NO professional terms: no "studio lighting", "commercial photography"
@@ -561,7 +556,7 @@ Respond ONLY as valid JSON (no markdown, no extra text):
   clean = clean.slice(start, end + 1);
 
   try {
-    return JSON.parse(clean);
+    return { ...JSON.parse(clean), _model: data.model_used };
   } catch (e) {
     const extract = (key) => {
       const rx = new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\[\\s\\S])*)"`, "s");
@@ -573,6 +568,7 @@ Respond ONLY as valid JSON (no markdown, no extra text):
       introVideo: extract("introVideo"),
       video:      extract("video"),
       caption:    extract("caption"),
+      _model:     data.model_used,
     };
   }
 }
@@ -607,7 +603,6 @@ export default function App() {
     try {
       localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(form));
     } catch {
-      // ignore storage issues
     }
   }, [form]);
 
@@ -808,6 +803,12 @@ export default function App() {
                 border: `1px solid ${copied===activeTab ? "rgba(100,200,100,0.4)" : "rgba(200,160,80,0.3)"}`,
                 color: copied===activeTab ? "#88ee88" : gold, fontSize:11, letterSpacing:1, fontFamily:"inherit",
               }}>{copied===activeTab ? "✓ Copied" : "Copy"}</button>
+            </div>
+          )}
+
+          {result?._model && (
+            <div style={{ marginTop:12, fontSize:11, color:"#667788", textAlign:"center" }}>
+              Dibuat dengan model: {result._model}
             </div>
           )}
 
